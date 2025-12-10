@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Snake — Green Bean Style</title>
+<style>
+  :root{
+    --bg-1: #071028;
+    --bg-2: #0b1630;
+    --panel: rgba(255,255,255,0.03);
+    --accent: #6ee7b7; /* green bean accent */
+    --muted: #94a3b8;
+    --card: #071629;
+    --text: #e6eef8;
+  }
+  html,body{height:100%;margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;color:var(--text);}
+  body{
+    background: linear-gradient(180deg,var(--bg-1),var(--bg-2));
+    display:flex;align-items:center;justify-content:center;padding:28px;
+  }
+  .wrap{
+    width:920px; max-width:96vw;
+    display:grid; grid-template-columns: 1fr 320px; gap:20px;
+    align-items:start;
+  }
+  .game-panel{
+    background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+    border-radius:12px;padding:18px; box-shadow: 0 8px 30px rgba(2,6,23,0.6);
+    display:flex;flex-direction:column;align-items:center;
+  }
+  canvas{background:linear-gradient(180deg,#06202a,#04202a); border-radius:8px; display:block;}
+  .hud{width:100%;display:flex;justify-content:space-between;align-items:center;margin-top:12px}
+  .hud .info{color:var(--muted)}
+  .controls{display:flex;gap:8px}
+  button{
+    background:transparent;border:1px solid rgba(255,255,255,0.08);color:var(--text);padding:8px 12px;border-radius:8px;
+    cursor:pointer;font-weight:600;
+  }
+  button:hover{border-color:var(--accent); box-shadow:0 4px 18px rgba(110,231,183,0.08)}
+  .side{
+    background:var(--card); border-radius:12px;padding:18px; height: fit-content;
+    box-shadow: 0 8px 30px rgba(2,6,23,0.45);
+  }
+  h1{margin:0 0 8px 0;font-size:20px}
+  p{margin:6px 0;color:var(--muted)}
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .legend .item{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:14px}
+  .key{width:18px;height:18px;border-radius:4px;background:var(--accent);display:inline-block}
+  .small{font-size:13px;color:var(--muted)}
+  .center{display:flex;align-items:center;justify-content:center}
+  footer{grid-column:1/-1;text-align:center;margin-top:14px;color:var(--muted);font-size:13px}
+  @media (max-width:880px){
+    .wrap{grid-template-columns:1fr}
+  }
+</style>
+</head>
+<body>
+  <div class="wrap" role="application" aria-label="Snake game">
+    <div class="game-panel" id="gamePanel">
+      <h1 style="color:var(--accent)">Snake</h1>
+      <canvas id="game" width="640" height="640" aria-label="Snake game canvas"></canvas>
+
+      <div class="hud" aria-hidden="false">
+        <div class="info">
+          <div><strong>Score:</strong> <span id="score">0</span></div>
+          <div class="small">Speed: <span id="speedLabel">6</span> tiles/sec</div>
+        </div>
+
+        <div class="controls">
+          <button id="startBtn">Start</button>
+          <button id="pauseBtn">Pause</button>
+          <button id="resetBtn">Reset</button>
+        </div>
+      </div>
+
+      <div style="width:100%;margin-top:10px;display:flex;justify-content:space-between;align-items:center">
+        <div class="small">Grid: <span id="gridSize">20 × 20</span></div>
+        <div class="small" id="fruitTimerText">Fruit moves in: 5s</div>
+      </div>
+    </div>
+
+    <aside class="side" aria-label="Game info">
+      <h1>How to play</h1>
+      <p>Use the arrow keys or WASD to move the snake. Eat the green fruit to grow and earn points. Every 5 seconds the fruit moves to a new random position if you don't eat it.</p>
+
+      <div class="legend">
+        <div class="item"><span class="key" style="background:#84ffca"></span> Fruit</div>
+        <div class="item"><span class="key" style="background:#9be7b2"></span> Snake head</div>
+        <div class="item"><span class="key" style="background:#2a8a6a"></span> Snake body</div>
+      </div>
+
+      <h1 style="margin-top:14px">Tips</h1>
+      <p class="small">Eating a fruit resets the fruit-move timer. If fruit moves while you're en route, adjust quickly — the fruit will be elsewhere.</p>
+
+      <h1 style="margin-top:14px">Controls</h1>
+      <p class="small">Arrow keys / WASD to move, Space to pause/resume.</p>
+    </aside>
+
+    <footer>Tip: Open on desktop for best experience. Fruit moves every 5 seconds automatically.</footer>
+  </div>
+
+<script>
+/*
+  Snake game (single-file)
+  - grid-based
+  - fruit auto-moves every 5 seconds if not eaten
+  - keyboard controls
+  - responsive canvas resizing
+*/
+
+// Game settings
+const GRID = 20;                // number of cells per row/column
+const TILE = 32;                // base tile size for canvas (we will scale)
+const BASE_SPEED = 6;           // moves per second
+const FRUIT_MOVE_INTERVAL = 5000; // ms (5 seconds)
+const CANVAS_ID = 'game';
+
+const canvas = document.getElementById(CANVAS_ID);
+const ctx = canvas.getContext('2d');
+let scaleFactor = 1;
+
+// game state
+let snake = [];
+let dir = {x: 1, y: 0}; // initial direction: right
+let nextDir = null;
+let fruit = null;
+let score = 0;
+let speed = BASE_SPEED;
+let lastMoveTime = 0;
+let running = false;
+let animationReq = null;
+
+// timers
+let fruitTimer = null;
+let fruitTimeRemaining = FRUIT_MOVE_INTERVAL;
+let fruitMovedSinceEat = false;
+
+// UI elements
+const scoreEl = document.getElementById('score');
+const startBtn = document.getElementById('startBtn');
+const pauseBtn = document.getElementById('pauseBtn');
+const resetBtn = document.getElementById('resetBtn');
+const fruitTimerText = document.getElementById('fruitTimerText');
+const speedLabel = document.getElementById('speedLabel');
+
+document.getElementById('gridSize').textContent = GRID + ' × ' + GRID;
+speedLabel.textContent = BASE_SPEED;
+
+// initialize/resets
+function resetGame() {
+  // center snake: 3 units length
+  const mid = Math.floor(GRID/2);
+  snake = [{x: mid-1, y: mid}, {x: mid, y: mid}, {x: mid+1, y: mid}]; // head last
+  dir = {x: 1, y: 0};
+  nextDir = null;
+  score = 0;
+  speed = BASE_SPEED;
+  lastMoveTime = 0;
+  running = false;
+  fruit = randomEmptyCell();
+  scoreEl.textContent = score;
+  resetFruitTimer();
+  draw();
+}
+
+// get random empty cell not overlapping snake
+function randomEmptyCell(){
+  const occupied = new Set(snake.map(p => p.x + ',' + p.y));
+  let attempts = 0;
+  while(true){
+    const r = {x: Math.floor(Math.random()*GRID), y: Math.floor(Math.random()*GRID)};
+    if(!occupied.has(r.x+','+r.y)) return r;
+    if(++attempts > 1000) break;
+  }
+  // fallback: first free cell
+  for(let y=0;y<GRID;y++){
+    for(let x=0;x<GRID;x++){
+      if(!occupied.has(x+','+y)) return {x,y};
+    }
+  }
+  return {x:0,y:0};
+}
+
+// resize canvas to maintain crisp squares and be responsive
+function fitCanvas(){
+  const wrapWidth = Math.min(window.innerWidth*0.65, 640);
+  const size = Math.min(wrapWidth, window.innerHeight - 200, GRID * TILE);
+  canvas.width = size;
+  canvas.height = size;
+  scaleFactor = size / (GRID * TILE);
+  draw();
+}
+window.addEventListener('resize', fitCanvas);
+
+// drawing helpers
+function drawCell(x,y, color){
+  const cellSize = canvas.width / GRID;
+  ctx.fillStyle = color;
+  ctx.fillRect(x*cellSize + 1, y*cellSize + 1, cellSize - 2, cellSize - 2);
+}
+
+function drawGrid(){
+  const cellSize = canvas.width / GRID;
+  ctx.strokeStyle = 'rgba(255,255,255,0.02)';
+  ctx.lineWidth = 1;
+  for(let i=0;i<=GRID;i++){
+    ctx.beginPath();
+    ctx.moveTo(0, i*cellSize);
+    ctx.lineTo(canvas.width, i*cellSize);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(i*cellSize, 0);
+    ctx.lineTo(i*cellSize, canvas.height);
+    ctx.stroke();
+  }
+}
+
+function draw(){
+  // background
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  // subtle background gradient
+  const g = ctx.createLinearGradient(0,0,0,canvas.height);
+  g.addColorStop(0,'#06202a');
+  g.addColorStop(1,'#04202a');
+  ctx.fillStyle = g;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // grid lines lightly
+  drawGrid();
+
+  // fruit
+  if(fruit){
+    drawCell(fruit.x, fruit.y, '#84ffca'); // bright green
+  }
+
+  // snake: body then head
+  for(let i=0;i<snake.length-1;i++){
+    const p = snake[i];
+    drawCell(p.x,p.y, '#2a8a6a');
+  }
+  // head
+  const head = snake[snake.length-1];
+  drawCell(head.x, head.y, '#9be7b2');
+}
+
+// game logic
+function update(delta){
+  // movement timing
+  const moveInterval = 1000 / speed;
+  lastMoveTime += delta;
+  if(lastMoveTime < moveInterval) return;
+  // how many steps to catch up (in case of lag)
+  const steps = Math.floor(lastMoveTime / moveInterval);
+  lastMoveTime -= steps * moveInterval;
+
+  for(let s=0;s<steps;s++){
+    // apply direction
+    if(nextDir){
+      // prevent reverse
+      if(!(nextDir.x === -dir.x && nextDir.y === -dir.y)){
+        dir = nextDir;
+      }
+      nextDir = null;
+    }
+    const head = snake[snake.length-1];
+    const newHead = {x: head.x + dir.x, y: head.y + dir.y};
+
+    // wrap around edges
+    if(newHead.x < 0) newHead.x = GRID - 1;
+    if(newHead.x >= GRID) newHead.x = 0;
+    if(newHead.y < 0) newHead.y = GRID - 1;
+    if(newHead.y >= GRID) newHead.y = 0;
+
+    // check collision with body (excluding tail that will move unless we grow)
+    const willGrow = fruit && newHead.x === fruit.x && newHead.y === fruit.y;
+    // collision test: if newHead overlaps any current body cell except the tail when not growing
+    for(let i=0;i<snake.length - (willGrow ? 0 : 1); i++){
+      const p = snake[i];
+      if(p.x === newHead.x && p.y === newHead.y){
+        endGame();
+        return;
+      }
+    }
+
+    // move snake
+    if(willGrow){
+      snake.push(newHead);
+      eatFruit();
+    } else {
+      // move by shifting forward
+      snake.shift();
+      snake.push(newHead);
+    }
+  }
+  draw();
+}
+
+// eat fruit handler
+function eatFruit(){
+  score += 10;
+  scoreEl.textContent = score;
+  // speed up small amount every 5 fruits (optional)
+  if(score % 50 === 0) {
+    speed = Math.min(20, speed + 1);
+    speedLabel.textContent = speed;
+  }
+  // place new fruit and reset fruit timer
+  fruit = randomEmptyCell();
+  resetFruitTimer();
+  fruitMovedSinceEat = false;
+}
+
+// fruit timer: every FRUIT_MOVE_INTERVAL ms move fruit if it still hasn't been eaten
+function resetFruitTimer(){
+  if(fruitTimer) clearInterval(fruitTimer);
+  fruitTimeRemaining = FRUIT_MOVE_INTERVAL;
+  updateFruitTimerText();
+  fruitTimer = setInterval(()=>{
+    // move fruit automatically if it remains (i.e., hasn't been recently eaten)
+    fruit = randomEmptyCell();
+    fruitMovedSinceEat = true;
+    // reset countdown visual
+    fruitTimeRemaining = FRUIT_MOVE_INTERVAL;
+    updateFruitTimerText();
+    draw();
+  }, FRUIT_MOVE_INTERVAL);
+
+  // also create a small countdown tick to update UI every 200ms
+  if(window._fruitCountdownInterval) clearInterval(window._fruitCountdownInterval);
+  const tick = 200;
+  window._fruitCountdownInterval = setInterval(()=>{
+    fruitTimeRemaining = Math.max(0, fruitTimeRemaining - tick);
+    if(fruitTimeRemaining === 0) fruitTimeRemaining = FRUIT_MOVE_INTERVAL; // reset for next interval
+    updateFruitTimerText();
+  }, tick);
+}
+
+function updateFruitTimerText(){
+  const seconds = Math.ceil(fruitTimeRemaining / 1000);
+  fruitTimerText.textContent = 'Fruit moves in: ' + seconds + 's';
+}
+
+// keyboard controls
+window.addEventListener('keydown', (e)=>{
+  if(!running && ['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','w','a','s','d'].includes(e.key)) {
+    start();
+  }
+
+  if(e.key === ' ') {
+    togglePause();
+    e.preventDefault();
+    return;
+  }
+  const key = e.key.toLowerCase();
+  if(key === 'arrowup' || key === 'w') nextDir = {x:0,y:-1};
+  if(key === 'arrowdown' || key === 's') nextDir = {x:0,y:1};
+  if(key === 'arrowleft' || key === 'a') nextDir = {x:-1,y:0};
+  if(key === 'arrowright' || key === 'd') nextDir = {x:1,y:0};
+  // normalize arrow keys (they appear as 'ArrowUp' etc.)
+  if(e.key.startsWith('Arrow')){
+    const dirName = e.key;
+    if(dirName === 'ArrowUp') nextDir = {x:0,y:-1};
+    if(dirName === 'ArrowDown') nextDir = {x:0,y:1};
+    if(dirName === 'ArrowLeft') nextDir = {x:-1,y:0};
+    if(dirName === 'ArrowRight') nextDir = {x:1,y:0};
+  }
+});
+
+// start, pause, reset
+function start(){
+  if(!running){
+    running = true;
+    lastMoveTime = 0;
+    lastFrameTime = performance.now();
+    loop(lastFrameTime);
+  }
+}
+function pause(){
+  running = false;
+  if(animationReq) cancelAnimationFrame(animationReq);
+}
+function togglePause(){ running ? pause() : start(); }
+
+function endGame(){
+  pause();
+  alert('Game over! Score: ' + score);
+}
+
+startBtn.addEventListener('click', start);
+pauseBtn.addEventListener('click', togglePause);
+resetBtn.addEventListener('click', ()=>{
+  pause();
+  resetGame();
+});
+
+// main loop using requestAnimationFrame
+let lastFrameTime = 0;
+function loop(ts){
+  if(!running) return;
+  const delta = ts - lastFrameTime;
+  lastFrameTime = ts;
+  update(delta);
+  animationReq = requestAnimationFrame(loop);
+}
+
+// initialize
+fitCanvas();
+resetGame();
+
+// start paused; user can press Start
+// but also allow starting with first keypress (handled above)
+
+// Touch controls for mobile (swipe)
+// Very simple swipe detection
+let touchStart = null;
+window.addEventListener('touchstart', (e)=>{
+  const t = e.touches[0];
+  touchStart = {x: t.clientX, y: t.clientY, time: Date.now()};
+}, {passive:true});
+window.addEventListener('touchend', (e)=>{
+  if(!touchStart) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touchStart.x;
+  const dy = t.clientY - touchStart.y;
+  const absX = Math.abs(dx);
+  const absY = Math.abs(dy);
+  if(Math.max(absX, absY) < 30) { touchStart = null; return; }
+  if(absX > absY){
+    // horizontal swipe
+    if(dx > 0) nextDir = {x:1,y:0}; else nextDir = {x:-1,y:0};
+  } else {
+    // vertical swipe
+    if(dy > 0) nextDir = {x:0,y:1}; else nextDir = {x:0,y:-1};
+  }
+  // start game on first swipe
+  if(!running) start();
+  touchStart = null;
+});
+
+// ensure fruit timer cleaned on unload
+window.addEventListener('beforeunload', ()=>{
+  if(fruitTimer) clearInterval(fruitTimer);
+  if(window._fruitCountdownInterval) clearInterval(window._fruitCountdownInterval);
+});
+
+</script>
+</body>
+</html>

@@ -1,0 +1,64 @@
+body{
+background-color:black;
+}
+
+h1{
+    color:rgb(255, 255, 255);
+    text-align: left;
+    font-weight: bold;
+    font-style: italic;
+    text-decoration: underline;
+
+
+}
+
+h1{
+    color:white;
+    text-align:left;
+    font-style: italic;
+    text-decoration:underline;
+    font-weight: bold;
+}
+p{
+    color: white;
+    text-align: right;
+    font-style: normal;
+    
+}
+.common{
+    background-color: grey;
+    border: 2px solid white;
+    position:absolute;
+}
+
+.header{
+    top: 5px;
+    right: 5px;
+    height: 100px;
+    left:5px;
+}
+.left{
+    top: 115px;
+    left: 15px;
+    width:100px;
+    bottom:40px;
+}
+.main{
+    top:115px;
+    left:130px;
+    right: 140px;
+    bottom:40px;
+    height: fit-content
+}
+
+.footer{
+    bottom:5px;
+    height:25px;
+    left:25px;
+    right:25px;
+    position:fixed;
+    z-index: 1;
+
+}
+
+
